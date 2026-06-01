@@ -70,8 +70,8 @@ if DATABASE_URL.startswith('postgresql'):
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': 'bluestock_dw',
-            'USER': os.getenv('DB_USER', 'bluestock'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'bluestock_2024'),
+            'USER': os.getenv('DB_USER', 'bXXXXXXXk'),
+            'PASSWORD': os.getenv('DB_PASSWORD', 'XXXXXXX'),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '5432'),
         }
