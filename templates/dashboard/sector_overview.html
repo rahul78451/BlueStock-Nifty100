@@ -1,0 +1,628 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Sector Analysis{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Sector Page Modal Styles */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(10, 14, 26, 0.85);
+    backdrop-filter: blur(12px) saturate(1.8);
+    -webkit-backdrop-filter: blur(12px) saturate(1.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+.modal-card {
+    width: 92vw;
+    height: 86vh;
+    max-width: 1200px;
+    background: rgba(17, 24, 39, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+    transform: scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-overlay.active .modal-card {
+    transform: scale(1);
+}
+.modal-close-btn {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+    z-index: 10;
+}
+.modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: rotate(90deg);
+}
+.modal-tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+.modal-company-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-header animate-in">
+    <div>
+        <h1>Sector Performance</h1>
+        <p class="section-subtitle">Comparative analysis across all industry verticals</p>
+    </div>
+</div>
+
+<!-- Sector Chart -->
+<div class="glass-card animate-in delay-1" style="margin-bottom:1.25rem;">
+    <h4 style="margin-bottom:1rem;">Average Health Score by Sector</h4>
+    <div class="chart-container" style="height:400px;"><canvas id="sectorBarChart"></canvas></div>
+</div>
+
+<!-- Sector Cards Grid -->
+<div class="sector-grid" id="sectorGrid">
+    <div style="text-align:center;padding:3rem;grid-column:1/-1;">Loading sectors...</div>
+</div>
+
+<!-- Sector Detail Modal -->
+<div id="sectorDetailModal" class="modal-overlay">
+    <div class="modal-card">
+        <!-- Close button -->
+        <button class="modal-close-btn" onclick="closeSectorModal()">&times;</button>
+        
+        <!-- View 1: Sector Companies List -->
+        <div id="sectorCompaniesView" style="display:flex; flex-direction:column; height:100%; width:100%;">
+            <div class="modal-header" style="margin-bottom:1.25rem;">
+                <h2 id="sectorModalTitle" style="font-size:1.75rem; display:flex; align-items:center; gap:12px;">Sector Companies</h2>
+                <p id="sectorModalSubtitle" style="color:var(--text-secondary); font-size:0.875rem; margin-top:4px;">List of companies in this category</p>
+            </div>
+            
+            <!-- Search bar -->
+            <div style="margin-bottom:1rem; position:relative;">
+                <input type="text" id="modalCompanySearch" placeholder="Search companies in this sector..." style="width:100%; padding:10px 16px; background:var(--bg-input); border:1px solid var(--border-glass); border-radius:var(--radius-md); color:var(--text-primary); outline:none; transition:all var(--transition-fast);" oninput="filterModalCompanies()">
+            </div>
+            
+            <!-- Scrollable companies table -->
+            <div class="table-container" style="flex:1; overflow-y:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th class="number">Market Cap (₹Cr)</th>
+                            <th class="number">ROCE %</th>
+                            <th class="number">ROE %</th>
+                            <th class="number">Health Score</th>
+                            <th>Rating</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sectorCompaniesBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- View 2: Company Financial Details -->
+        <div id="companyDetailView" style="display:none; flex-direction:column; height:100%; width:100%; overflow-y:auto; padding-right:6px;">
+            <!-- Header row with Back to list button -->
+            <div style="margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center;">
+                <button class="btn btn-glass btn-sm" onclick="backToSectorList()">← Back to Sector list</button>
+            </div>
+
+            <!-- Company Hero -->
+            <div class="company-hero" style="margin-bottom:1.5rem;">
+                <div class="hero-avatar" id="modalCompanyAvatar" style="background:var(--gradient-primary); width:64px; height:64px; border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:800; color:white; flex-shrink:0;">
+                    --
+                </div>
+                <div class="hero-info">
+                    <h1 style="display:flex; align-items:center; gap:12px;">
+                        <span id="modalCompanyName">Company Name</span>
+                        <span class="badge badge-sector" id="modalCompanySector" style="font-size:0.75rem;">Sector</span>
+                    </h1>
+                    <p style="color:var(--text-secondary); font-size:0.875rem; margin-top:4px;" id="modalCompanyAbout">About company...</p>
+                    <div class="hero-meta" style="margin-top:0.5rem; display:flex; gap:1.25rem; flex-wrap:wrap;">
+                        <div class="meta-tag" id="modalCompanySymbolTag"><span class="meta-icon">📌</span> --</div>
+                        <div class="meta-tag" id="modalCompanyMCapTag"><span class="meta-icon">💰</span> Market Cap: --</div>
+                        <div class="meta-tag" id="modalCompanyROCETag"><span class="meta-icon">📈</span> ROCE: --</div>
+                        <div class="meta-tag" id="modalCompanyROETag"><span class="meta-icon">🏦</span> ROE: --</div>
+                        <div class="meta-tag" id="modalCompanyBVTag"><span class="meta-icon">📖</span> Book Value: --</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs inside Modal -->
+            <div class="tab-nav" style="margin-bottom:1.25rem;">
+                <button class="tab-btn active" onclick="showModalTab('overview')" id="modal-tab-overview">Overview</button>
+                <button class="tab-btn" onclick="showModalTab('profitloss')" id="modal-tab-profitloss">Profit & Loss</button>
+                <button class="tab-btn" onclick="showModalTab('balancesheet')" id="modal-tab-balancesheet">Balance Sheet</button>
+                <button class="tab-btn" onclick="showModalTab('cashflow')" id="modal-tab-cashflow">Cash Flow</button>
+                <button class="tab-btn" onclick="showModalTab('analysis')" id="modal-tab-analysis">Growth Analysis</button>
+            </div>
+
+            <!-- Overview Panel -->
+            <div id="modal-panel-overview" class="modal-tab-panel">
+                <div style="display:grid; grid-template-columns:300px 1fr; gap:1.25rem; margin-bottom:1.25rem;">
+                    <!-- Health Score Card -->
+                    <div class="glass-card" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.25rem;">
+                        <div class="score-ring" id="modalScoreRing" style="width:120px; height:120px;">
+                            <svg viewBox="0 0 120 120" style="transform:rotate(-90deg); width:100%; height:100%;">
+                                <circle class="ring-bg" cx="60" cy="60" r="52" style="fill:none; stroke:rgba(255,255,255,0.06); stroke-width:8;"/>
+                                <circle class="ring-fill" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73" id="modalScoreRingFill" style="fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);"/>
+                            </svg>
+                            <div class="score-text" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                                <div class="score-value" id="modalOverallScore" style="font-size:1.75rem; font-weight:800;">—</div>
+                                <div class="score-label" id="modalHealthLabel" style="font-size:0.6875rem; color:var(--text-muted); margin-top:4px; text-transform:uppercase;">loading</div>
+                            </div>
+                        </div>
+                        <div class="score-breakdown" id="modalScoreBreakdown" style="width:100%; margin-top:1rem;"></div>
+                    </div>
+                    <!-- Pros & Cons -->
+                    <div class="pros-cons-grid" id="modalProsConsSection">
+                        <div class="glass-card" style="padding:1.25rem;">
+                            <h4 style="color:var(--accent-emerald); margin-bottom:0.75rem;">✅ Strengths</h4>
+                            <ul class="pros-cons-list" id="modalProsList" style="max-height:180px; overflow-y:auto; list-style:none; display:flex; flex-direction:column; gap:6px;"></ul>
+                        </div>
+                        <div class="glass-card" style="padding:1.25rem;">
+                            <h4 style="color:var(--accent-rose); margin-bottom:0.75rem;">⚠️ Concerns</h4>
+                            <ul class="pros-cons-list" id="modalConsList" style="max-height:180px; overflow-y:auto; list-style:none; display:flex; flex-direction:column; gap:6px;"></ul>
+                        </div>
+                    </div>
+                </div>
+                <!-- Charts Row -->
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Revenue & Net Profit Trend</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRevenueProfitChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Margin Analysis (%)</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalMarginChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profit & Loss Panel -->
+            <div id="modal-panel-profitloss" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Revenue vs Expenses</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRevenueExpenseChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">EPS Trend</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalEpsChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="glass-card" style="margin-top:1.25rem; padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Detailed P&L Statement</h4>
+                    <div class="table-container">
+                        <table class="data-table" id="modalPlTable">
+                            <thead><tr id="modalPlTableHead"></tr></thead>
+                            <tbody id="modalPlTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balance Sheet Panel -->
+            <div id="modal-panel-balancesheet" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Assets vs Liabilities</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalAssetsLiabChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Debt-to-Equity Ratio</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalDteChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cash Flow Panel -->
+            <div id="modal-panel-cashflow" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Cash Flow Streams</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalCashflowChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Free Cash Flow</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalFcfChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Growth Analysis Panel -->
+            <div id="modal-panel-analysis" class="modal-tab-panel" style="display:none;">
+                <div class="glass-card" style="padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Growth Metrics Comparison</h4>
+                    <div class="chart-container" style="height:320px;"><canvas id="modalGrowthRadarChart"></canvas></div>
+                </div>
+                <div class="glass-card" style="margin-top:1.25rem; padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Period-wise Analysis</h4>
+                    <div class="table-container">
+                        <table class="data-table" id="modalAnalysisTable">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th class="number">Sales Growth %</th>
+                                    <th class="number">Profit Growth %</th>
+                                    <th class="number">Stock CAGR %</th>
+                                    <th class="number">ROE %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalAnalysisBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/charts.js' %}?v=12"></script>
+<script>
+let allModalCompanies = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const res = await fetch('/api/dashboard-stats/');
+        const data = await res.json();
+        const sectors = data.sector_performance || [];
+
+        // Sector bar chart
+        const SECTOR_ICONS = {
+            'IT': '💻', 'Banking': '🏦', 'NBFC': '💳', 'Insurance': '🛡️',
+            'Energy': '⚡', 'Power': '🔌', 'Pharma': '💊', 'Healthcare': '🏥',
+            'FMCG': '🛒', 'Auto': '🚗', 'Metals': '⛏️', 'Cement': '🏗️',
+            'Telecom': '📡', 'Capital Goods': '🏭', 'Paints': '🎨',
+            'Real Estate': '🏘️', 'Chemicals': '🧪', 'Consumer': '💎',
+            'Conglomerate': '🏢', 'Ports': '🚢', 'Aviation': '✈️'
+        };
+
+        const sorted = sectors.sort((a, b) => (b.avg_score || 0) - (a.avg_score || 0));
+        createChart('sectorBarChart', 'line', sorted.map(s => s.sector_name),
+            [{
+                label: 'Avg Health Score',
+                data: sorted.map(s => s.avg_score ? parseFloat(Number(s.avg_score).toFixed(1)) : 0),
+                backgroundColor: '#818cf833',
+                borderColor: '#818cf8',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: sorted.map(s => s.color_hex || '#6366f1'),
+                pointRadius: 4,
+            }],
+            { indexAxis: 'y' }
+        );
+
+        // Sector cards
+        const grid = document.getElementById('sectorGrid');
+        grid.innerHTML = sorted.map((s, i) => {
+            const icon = SECTOR_ICONS[s.sector_code] || '📊';
+            const score = s.avg_score ? parseFloat(s.avg_score).toFixed(1) : '—';
+            let scoreColor = '#64748b';
+            if (score >= 80) scoreColor = '#10b981';
+            else if (score >= 60) scoreColor = '#22c55e';
+            else if (score >= 40) scoreColor = '#f59e0b';
+            else if (score >= 20) scoreColor = '#f97316';
+            else scoreColor = '#ef4444';
+
+            return `
+            <div class="glass-card sector-card animate-in" style="animation-delay:${i * 0.05}s;--sector-color:${s.color_hex}" onclick="openSectorModal('${s.sector_code}', '${s.sector_name}', '${s.color_hex}')">
+                <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${s.color_hex};border-radius:var(--radius-lg) var(--radius-lg) 0 0;"></div>
+                <div class="sector-icon" style="background:${s.color_hex}22;color:${s.color_hex}">${icon}</div>
+                <div class="sector-name">${s.sector_name}</div>
+                <div class="sector-meta">${s.company_count} companies</div>
+                <div class="sector-score" style="color:${scoreColor}">${score}</div>
+            </div>`;
+        }).join('');
+
+    } catch (e) {
+        console.error('Sector load error:', e);
+    }
+});
+
+async function openSectorModal(sectorCode, sectorName, colorHex) {
+    document.getElementById('sectorModalTitle').innerHTML = `${sectorName} Companies`;
+    document.getElementById('sectorModalTitle').style.color = colorHex;
+    document.getElementById('modalCompanySearch').value = '';
+    
+    const tbody = document.getElementById('sectorCompaniesBody');
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;">Loading companies...</td></tr>`;
+    
+    // Show overlay
+    const modal = document.getElementById('sectorDetailModal');
+    modal.classList.add('active');
+    
+    // Toggle views to show the list of companies
+    document.getElementById('sectorCompaniesView').style.display = 'flex';
+    document.getElementById('companyDetailView').style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/companies/?sector__sector_code=${sectorCode}&page_size=100`);
+        const data = await res.json();
+        allModalCompanies = data.results || data;
+        renderModalCompanies(allModalCompanies);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--accent-rose);padding:2rem;">Failed to load companies.</td></tr>`;
+    }
+}
+
+function renderModalCompanies(companies) {
+    const tbody = document.getElementById('sectorCompaniesBody');
+    if (companies.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;">No companies match search.</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = companies.map(c => {
+        const label = c.health_label || '—';
+        let scoreColor = '#64748b';
+        if (c.health_score >= 80) scoreColor = '#10b981';
+        else if (c.health_score >= 60) scoreColor = '#22c55e';
+        else if (c.health_score >= 40) scoreColor = '#f59e0b';
+        else if (c.health_score >= 20) scoreColor = '#f97316';
+        else scoreColor = '#ef4444';
+
+        return `
+        <tr class="modal-company-row" onclick="openCompanyDetail('${c.symbol}')">
+            <td>
+                <div class="company-cell">
+                    <div class="company-avatar" style="background:var(--gradient-primary); width:32px; height:32px; font-size:0.7rem;">
+                        ${c.symbol.substring(0, 2)}
+                    </div>
+                    <div class="company-info">
+                        <div class="name" style="font-size:0.8125rem;">${c.company_name}</div>
+                        <div class="symbol" style="font-size:0.7rem;">${c.symbol}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="number">${c.market_cap_cr ? Number(c.market_cap_cr).toLocaleString('en-IN') : '—'}</td>
+            <td class="number ${c.roce_pct > 0 ? 'positive' : 'negative'}">${c.roce_pct || '—'}%</td>
+            <td class="number ${c.roe_pct > 0 ? 'positive' : 'negative'}">${c.roe_pct || '—'}%</td>
+            <td class="number" style="font-weight:700; color:${scoreColor}">${c.health_score ? c.health_score.toFixed(1) : '—'}</td>
+            <td><span class="badge badge-${label.toLowerCase()}">${label}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+function filterModalCompanies() {
+    const val = document.getElementById('modalCompanySearch').value.toLowerCase().trim();
+    const filtered = allModalCompanies.filter(c => 
+        c.company_name.toLowerCase().includes(val) || 
+        c.symbol.toLowerCase().includes(val)
+    );
+    renderModalCompanies(filtered);
+}
+
+function closeSectorModal() {
+    document.getElementById('sectorDetailModal').classList.remove('active');
+}
+
+async function openCompanyDetail(symbol) {
+    // Hide sector list and show detail view
+    document.getElementById('sectorCompaniesView').style.display = 'none';
+    document.getElementById('companyDetailView').style.display = 'flex';
+    
+    // Set loading placeholders
+    document.getElementById('modalCompanyName').innerText = "Loading...";
+    document.getElementById('modalCompanySector').innerText = "";
+    document.getElementById('modalCompanyAbout').innerText = "";
+    
+    try {
+        const [chartRes, detailRes] = await Promise.all([
+            fetch(`/api/companies/${symbol}/chart-data/`),
+            fetch(`/api/companies/${symbol}/?format=json`)
+        ]);
+        const chartData = await chartRes.json();
+        const companyData = await detailRes.json();
+
+        // Render company detail hero fields
+        document.getElementById('modalCompanyName').innerText = companyData.company_name;
+        document.getElementById('modalCompanySector').innerText = companyData.sector_name;
+        document.getElementById('modalCompanyAbout').innerText = companyData.about_company || "No description available.";
+        document.getElementById('modalCompanyAvatar').innerText = symbol.substring(0, 2);
+        
+        document.getElementById('modalCompanySymbolTag').innerHTML = `<span class="meta-icon">📌</span> ${symbol}`;
+        document.getElementById('modalCompanyMCapTag').innerHTML = `<span class="meta-icon">💰</span> Market Cap: ₹${Math.round(companyData.market_cap_cr || 0).toLocaleString('en-IN')} Cr`;
+        document.getElementById('modalCompanyROCETag').innerHTML = `<span class="meta-icon">📈</span> ROCE: ${companyData.roce_pct || '—'}%`;
+        document.getElementById('modalCompanyROETag').innerHTML = `<span class="meta-icon">🏦</span> ROE: ${companyData.roe_pct || '—'}%`;
+        document.getElementById('modalCompanyBVTag').innerHTML = `<span class="meta-icon">📖</span> Book Value: ₹${companyData.book_value || '—'}`;
+
+        // RENDER DETAILS ON PORTALS
+        renderModalOverview(companyData, chartData);
+        renderModalProfitLoss(companyData, chartData);
+        renderModalBalanceSheet(companyData, chartData);
+        renderModalCashFlow(companyData, chartData);
+        renderModalAnalysis(companyData);
+        
+        // Reset tab view to Overview
+        showModalTab('overview');
+
+    } catch (e) {
+        console.error('Error loading company details inside modal:', e);
+    }
+}
+
+function backToSectorList() {
+    document.getElementById('companyDetailView').style.display = 'none';
+    document.getElementById('sectorCompaniesView').style.display = 'flex';
+}
+
+function showModalTab(tab) {
+    document.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.modal-card .tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`modal-panel-${tab}`).style.display = 'flex';
+    document.getElementById(`modal-tab-${tab}`).classList.add('active');
+}
+
+function renderModalOverview(companyData, chartData) {
+    const score = companyData.ml_scores?.[0];
+    if (score) {
+        const val = parseFloat(score.overall_score);
+        document.getElementById('modalOverallScore').textContent = val.toFixed(1);
+        document.getElementById('modalHealthLabel').textContent = score.health_label_name || '';
+
+        const circ = 2 * Math.PI * 52;
+        const offset = circ - (val / 100) * circ;
+        const fill = document.getElementById('modalScoreRingFill');
+        fill.style.stroke = score.health_color || '#6366f1';
+        setTimeout(() => { fill.style.strokeDashoffset = offset; }, 100);
+
+        // Score breakdown
+        const dims = [
+            { label: 'Profitability', val: score.profitability_score, color: '#6366f1' },
+            { label: 'Growth', val: score.growth_score, color: '#3b82f6' },
+            { label: 'Leverage', val: score.leverage_score, color: '#06b6d4' },
+            { label: 'Cash Flow', val: score.cashflow_score, color: '#10b981' },
+            { label: 'Dividend', val: score.dividend_score, color: '#f59e0b' },
+            { label: 'Trend', val: score.trend_score, color: '#f43f5e' },
+        ];
+        document.getElementById('modalScoreBreakdown').innerHTML = dims.map(d => `
+            <div class="score-bar-item">
+                <span class="bar-label">${d.label}</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width:${d.val}%;background:${d.color};"></div>
+                </div>
+                <span class="bar-value" style="color:${d.color}">${parseFloat(d.val).toFixed(0)}</span>
+            </div>
+        `).join('');
+    }
+
+    // Pros & Cons
+    const pros = (companyData.pros_cons || []).filter(p => p.is_pro);
+    const cons = (companyData.pros_cons || []).filter(p => !p.is_pro);
+    document.getElementById('modalProsList').innerHTML = pros.length > 0 ? pros.map(p =>
+        `<li><span class="icon-pro">✓</span>${p.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.8125rem;">No strengths recorded.</span></li>';
+    
+    document.getElementById('modalConsList').innerHTML = cons.length > 0 ? cons.map(c =>
+        `<li><span class="icon-con">✗</span>${c.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.8125rem;">No concerns recorded.</span></li>';
+
+    // Charts
+    if (chartData) {
+        createChart('modalRevenueProfitChart', 'line', chartData.labels, [
+            { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+            { label: 'Net Profit', data: chartData.net_profit, backgroundColor: 'rgba(16,185,129,0.3)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        ]);
+        createChart('modalMarginChart', 'line', chartData.labels, [
+            { label: 'OPM %', data: chartData.opm_pct, borderColor: '#8b5cf6', tension: 0.4, fill: false },
+            { label: 'NPM %', data: chartData.npm_pct, borderColor: '#06b6d4', tension: 0.4, fill: false },
+        ]);
+    }
+}
+
+function renderModalProfitLoss(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalRevenueExpenseChart', 'line', chartData.labels, [
+        { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Operating Profit', data: chartData.operating_profit, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalEpsChart', 'line', chartData.labels, [
+        { label: 'EPS (₹)', data: chartData.eps, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.4, fill: true },
+    ]);
+
+    // Table
+    const pls = companyData.profit_loss || [];
+    if (pls.length > 0) {
+        const head = document.getElementById('modalPlTableHead');
+        head.innerHTML = '<th>Metric</th>' + pls.map(p => `<th class="number">${p.year_label}</th>`).join('');
+        const metrics = [
+            ['Sales', 'sales'], ['Expenses', 'expenses'], ['Operating Profit', 'operating_profit'],
+            ['OPM %', 'opm_pct'], ['Net Profit', 'net_profit'], ['EPS', 'eps']
+        ];
+        const body = document.getElementById('modalPlTableBody');
+        body.innerHTML = metrics.map(([label, key]) => {
+            return `<tr><td style="font-weight:600">${label}</td>${pls.map(p => {
+                const v = p[key];
+                return `<td class="number">${v != null ? Number(v).toLocaleString('en-IN', {maximumFractionDigits: 2}) : '—'}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+    }
+}
+
+function renderModalBalanceSheet(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalAssetsLiabChart', 'line', chartData.labels, [
+        { label: 'Total Assets', data: chartData.total_assets, backgroundColor: 'rgba(59,130,246,0.2)', borderColor: '#3b82f6', borderWidth: 2, fill: false, tension: 0.4 },
+        { label: 'Borrowings', data: chartData.borrowings, backgroundColor: 'rgba(244,63,94,0.2)', borderColor: '#f43f5e', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalDteChart', 'line', chartData.labels, [
+        { label: 'Debt-to-Equity', data: chartData.debt_to_equity, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderModalCashFlow(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalCashflowChart', 'line', chartData.labels, [
+        { label: 'Operating', data: chartData.operating_cf, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Free Cash Flow', data: chartData.free_cf, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Net Cash Flow', data: chartData.net_cf, backgroundColor: 'rgba(245,158,11,0.2)', borderColor: '#f59e0b', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalFcfChart', 'line', chartData.labels, [
+        { label: 'Free Cash Flow', data: chartData.free_cf, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderModalAnalysis(companyData) {
+    const analysis = companyData.analysis || [];
+    if (analysis.length === 0) return;
+
+    // Radar chart
+    const labels = analysis.map(a => a.period_label);
+    createRadarChart('modalGrowthRadarChart', labels, [
+        { label: 'Sales Growth', data: analysis.map(a => parseFloat(a.compounded_sales_growth_pct || 0)), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.2)' },
+        { label: 'Profit Growth', data: analysis.map(a => parseFloat(a.compounded_profit_growth_pct || 0)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
+        { label: 'Stock CAGR', data: analysis.map(a => parseFloat(a.stock_price_cagr_pct || 0)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.2)' },
+        { label: 'ROE', data: analysis.map(a => parseFloat(a.roe_pct || 0)), borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.2)' },
+    ]);
+
+    // Table
+    const body = document.getElementById('modalAnalysisBody');
+    body.innerHTML = analysis.map(a => `
+        <tr>
+            <td style="font-weight:600">${a.period_label}</td>
+            <td class="number ${a.compounded_sales_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_sales_growth_pct}%</td>
+            <td class="number ${a.compounded_profit_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_profit_growth_pct}%</td>
+            <td class="number ${a.stock_price_cagr_pct >= 0 ? 'positive' : 'negative'}">${a.stock_price_cagr_pct}%</td>
+            <td class="number">${a.roe_pct}%</td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

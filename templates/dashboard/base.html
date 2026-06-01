@@ -1,0 +1,67 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="BlueStock Nifty 100 — Financial Intelligence System for India's Top 100 Companies. Analyze financials, health scores, and sector performance.">
+    <title>{% block title %}BlueStock Nifty 100{% endblock %} — Financial Intelligence</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=99">
+    <script src="{% static 'js/chart.umd.min.js' %}"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-inner">
+                <a href="/" class="nav-brand">
+                    <div class="logo-icon">📊</div>
+                    <span>BlueStock<span style="color: var(--accent-indigo);">N100</span></span>
+                </a>
+
+                <ul class="nav-links">
+                    <li><a href="/" class="{% if request.resolver_match.url_name == 'index' %}active{% endif %}" id="nav-dashboard">Dashboard</a></li>
+                    <li><a href="/sectors/" class="{% if request.resolver_match.url_name == 'sector-overview' %}active{% endif %}" id="nav-sectors">Sectors</a></li>
+                    <li><a href="/api/docs/" id="nav-api">API Docs</a></li>
+                </ul>
+
+                <div class="nav-search">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="globalSearch" placeholder="Search companies (e.g. TCS, Infosys...)" autocomplete="off">
+                    <div class="search-dropdown" id="searchDropdown"></div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>BlueStock Nifty 100 — Financial Intelligence System &middot; Data refreshed daily &middot;
+            <a href="/api/docs/">API Documentation</a> &middot;
+            <a href="/admin/">Admin</a></p>
+        </footer>
+    </div>
+
+    <script src="{% static 'js/dashboard.js' %}"></script>
+    {% block extra_scripts %}{% endblock %}
+
+    <script>
+        // Remove loading overlay
+        window.addEventListener('load', () => {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.classList.add('fade-out');
+            setTimeout(() => overlay.remove(), 400);
+        });
+    </script>
+</body>
+</html>

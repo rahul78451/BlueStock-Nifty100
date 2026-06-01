@@ -1,0 +1,338 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}{{ company.symbol }} — {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<!-- Back Button -->
+<div style="margin-bottom:1rem;" class="animate-in">
+    <a href="/" class="btn btn-glass">← Back to Dashboard</a>
+</div>
+
+<!-- Company Hero -->
+<div class="company-hero animate-in">
+    <div class="hero-avatar" style="background: var(--gradient-primary);">
+        {{ company.symbol|truncatechars:2 }}
+    </div>
+    <div class="hero-info">
+        <h1>
+            {{ company.company_name }}
+            <span class="badge badge-sector" style="font-size:0.75rem;">{{ company.sector.sector_name }}</span>
+        </h1>
+        <p style="color:var(--text-secondary);font-size:0.9375rem;margin-top:4px;">{{ company.about_company }}</p>
+        <div class="hero-meta">
+            <div class="meta-tag"><span class="meta-icon">📌</span> {{ company.symbol }}</div>
+            <div class="meta-tag"><span class="meta-icon">💰</span> Market Cap: ₹{{ company.market_cap_cr|floatformat:0 }} Cr</div>
+            <div class="meta-tag"><span class="meta-icon">📈</span> ROCE: {{ company.roce_pct }}%</div>
+            <div class="meta-tag"><span class="meta-icon">🏦</span> ROE: {{ company.roe_pct }}%</div>
+            <div class="meta-tag"><span class="meta-icon">📖</span> Book Value: ₹{{ company.book_value }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Navigation Tabs -->
+<div class="tab-nav animate-in delay-1">
+    <button class="tab-btn active" onclick="showTab('overview')" id="tab-overview">Overview</button>
+    <button class="tab-btn" onclick="showTab('profitloss')" id="tab-profitloss">Profit & Loss</button>
+    <button class="tab-btn" onclick="showTab('balancesheet')" id="tab-balancesheet">Balance Sheet</button>
+    <button class="tab-btn" onclick="showTab('cashflow')" id="tab-cashflow">Cash Flow</button>
+    <button class="tab-btn" onclick="showTab('analysis')" id="tab-analysis">Growth Analysis</button>
+</div>
+
+<!-- Overview Tab -->
+<div id="panel-overview" class="tab-panel">
+    <!-- Score + Pros/Cons Row -->
+    <div style="display:grid;grid-template-columns:320px 1fr;gap:1.25rem;margin-bottom:1.25rem;" class="animate-in delay-2">
+        <!-- Health Score Card -->
+        <div class="glass-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;" id="healthScoreCard">
+            <div class="score-ring" id="scoreRing">
+                <svg viewBox="0 0 120 120">
+                    <circle class="ring-bg" cx="60" cy="60" r="52"/>
+                    <circle class="ring-fill" cx="60" cy="60" r="52"
+                        stroke-dasharray="326.73"
+                        stroke-dashoffset="326.73"
+                        id="scoreRingFill"/>
+                </svg>
+                <div class="score-text">
+                    <div class="score-value" id="overallScore">—</div>
+                    <div class="score-label" id="healthLabel">loading</div>
+                </div>
+            </div>
+            <div class="score-breakdown" id="scoreBreakdown" style="width:100%;margin-top:1.5rem;"></div>
+        </div>
+
+        <!-- Pros & Cons -->
+        <div class="pros-cons-grid" id="prosConsSection">
+            <div class="glass-card">
+                <h4 style="color:var(--accent-emerald);margin-bottom:1rem;">✅ Strengths</h4>
+                <ul class="pros-cons-list" id="prosList"></ul>
+            </div>
+            <div class="glass-card">
+                <h4 style="color:var(--accent-rose);margin-bottom:1rem;">⚠️ Concerns</h4>
+                <ul class="pros-cons-list" id="consList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue & Profit Chart -->
+    <div class="chart-grid animate-in delay-3">
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Revenue & Net Profit Trend</h4>
+            <div class="chart-container"><canvas id="revenueProfitChart"></canvas></div>
+        </div>
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Margin Analysis (%)</h4>
+            <div class="chart-container"><canvas id="marginChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Profit & Loss Tab -->
+<div id="panel-profitloss" class="tab-panel" style="display:none;">
+    <div class="chart-grid animate-in">
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Revenue vs Expenses</h4>
+            <div class="chart-container"><canvas id="revenueExpenseChart"></canvas></div>
+        </div>
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">EPS Trend</h4>
+            <div class="chart-container"><canvas id="epsChart"></canvas></div>
+        </div>
+    </div>
+    <div class="glass-card animate-in" style="margin-top:1.25rem;">
+        <h4 style="margin-bottom:1rem;">Detailed P&L Statement</h4>
+        <div class="table-container">
+            <table class="data-table" id="plTable">
+                <thead><tr id="plTableHead"></tr></thead>
+                <tbody id="plTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Balance Sheet Tab -->
+<div id="panel-balancesheet" class="tab-panel" style="display:none;">
+    <div class="chart-grid animate-in">
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Assets vs Liabilities</h4>
+            <div class="chart-container"><canvas id="assetsLiabChart"></canvas></div>
+        </div>
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Debt-to-Equity Ratio</h4>
+            <div class="chart-container"><canvas id="dteChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Cash Flow Tab -->
+<div id="panel-cashflow" class="tab-panel" style="display:none;">
+    <div class="chart-grid animate-in">
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Cash Flow Streams</h4>
+            <div class="chart-container"><canvas id="cashflowChart"></canvas></div>
+        </div>
+        <div class="glass-card">
+            <h4 style="margin-bottom:1rem;">Free Cash Flow</h4>
+            <div class="chart-container"><canvas id="fcfChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Growth Analysis Tab -->
+<div id="panel-analysis" class="tab-panel" style="display:none;">
+    <div class="glass-card animate-in">
+        <h4 style="margin-bottom:1rem;">Growth Metrics Comparison</h4>
+        <div class="chart-container" style="height:400px;"><canvas id="growthRadarChart"></canvas></div>
+    </div>
+    <div class="glass-card animate-in" style="margin-top:1.25rem;">
+        <h4 style="margin-bottom:1rem;">Period-wise Analysis</h4>
+        <div class="table-container">
+            <table class="data-table" id="analysisTable">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th class="number">Sales Growth %</th>
+                        <th class="number">Profit Growth %</th>
+                        <th class="number">Stock CAGR %</th>
+                        <th class="number">ROE %</th>
+                    </tr>
+                </thead>
+                <tbody id="analysisBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/charts.js' %}?v=3"></script>
+<script>
+const SYMBOL = '{{ company.symbol }}';
+let chartData = null;
+let companyData = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const [chartRes, detailRes] = await Promise.all([
+            fetch(`/api/companies/${SYMBOL}/chart-data/`),
+            fetch(`/api/companies/${SYMBOL}/?format=json`)
+        ]);
+        chartData = await chartRes.json();
+        companyData = await detailRes.json();
+
+        renderOverview();
+        renderProfitLoss();
+        renderBalanceSheet();
+        renderCashFlow();
+        renderAnalysis();
+    } catch (e) {
+        console.error('Error loading company data:', e);
+    }
+});
+
+function showTab(tab) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`panel-${tab}`).style.display = 'block';
+    document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+function renderOverview() {
+    // ML Score
+    const score = companyData.ml_scores?.[0];
+    if (score) {
+        const val = parseFloat(score.overall_score);
+        document.getElementById('overallScore').textContent = val.toFixed(1);
+        document.getElementById('healthLabel').textContent = score.health_label_name || '';
+
+        const circ = 2 * Math.PI * 52;
+        const offset = circ - (val / 100) * circ;
+        const fill = document.getElementById('scoreRingFill');
+        fill.style.stroke = score.health_color || '#6366f1';
+        setTimeout(() => { fill.style.strokeDashoffset = offset; }, 100);
+
+        // Score breakdown
+        const dims = [
+            { label: 'Profitability', val: score.profitability_score, color: '#6366f1' },
+            { label: 'Growth', val: score.growth_score, color: '#3b82f6' },
+            { label: 'Leverage', val: score.leverage_score, color: '#06b6d4' },
+            { label: 'Cash Flow', val: score.cashflow_score, color: '#10b981' },
+            { label: 'Dividend', val: score.dividend_score, color: '#f59e0b' },
+            { label: 'Trend', val: score.trend_score, color: '#f43f5e' },
+        ];
+        document.getElementById('scoreBreakdown').innerHTML = dims.map(d => `
+            <div class="score-bar-item">
+                <span class="bar-label">${d.label}</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width:${d.val}%;background:${d.color};"></div>
+                </div>
+                <span class="bar-value" style="color:${d.color}">${parseFloat(d.val).toFixed(0)}</span>
+            </div>
+        `).join('');
+    }
+
+    // Pros & Cons
+    const pros = (companyData.pros_cons || []).filter(p => p.is_pro);
+    const cons = (companyData.pros_cons || []).filter(p => !p.is_pro);
+    document.getElementById('prosList').innerHTML = pros.length > 0 ? pros.map(p =>
+        `<li><span class="icon-pro">✓</span>${p.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.875rem;">No strengths recorded in database.</span></li>';
+    
+    document.getElementById('consList').innerHTML = cons.length > 0 ? cons.map(c =>
+        `<li><span class="icon-con">✗</span>${c.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.875rem;">No concerns recorded in database.</span></li>';
+
+    // Revenue & Profit Chart
+    if (chartData) {
+        createChart('revenueProfitChart', 'line', chartData.labels, [
+            { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+            { label: 'Net Profit', data: chartData.net_profit, backgroundColor: 'rgba(16,185,129,0.3)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        ]);
+        createChart('marginChart', 'line', chartData.labels, [
+            { label: 'OPM %', data: chartData.opm_pct, borderColor: '#8b5cf6', tension: 0.4, fill: false },
+            { label: 'NPM %', data: chartData.npm_pct, borderColor: '#06b6d4', tension: 0.4, fill: false },
+        ]);
+    }
+}
+
+function renderProfitLoss() {
+    if (!chartData) return;
+    createChart('revenueExpenseChart', 'line', chartData.labels, [
+        { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Operating Profit', data: chartData.operating_profit, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+    ]);
+    createChart('epsChart', 'line', chartData.labels, [
+        { label: 'EPS (₹)', data: chartData.eps, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.4, fill: true },
+    ]);
+
+    // P&L Table
+    const pls = companyData.profit_loss || [];
+    if (pls.length > 0) {
+        const head = document.getElementById('plTableHead');
+        head.innerHTML = '<th>Metric</th>' + pls.map(p => `<th class="number">${p.year_label}</th>`).join('');
+        const metrics = [
+            ['Sales', 'sales'], ['Expenses', 'expenses'], ['Operating Profit', 'operating_profit'],
+            ['OPM %', 'opm_pct'], ['Net Profit', 'net_profit'], ['EPS', 'eps']
+        ];
+        const body = document.getElementById('plTableBody');
+        body.innerHTML = metrics.map(([label, key]) => {
+            return `<tr><td style="font-weight:600">${label}</td>${pls.map(p => {
+                const v = p[key];
+                return `<td class="number">${v != null ? Number(v).toLocaleString('en-IN', {maximumFractionDigits: 2}) : '—'}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+    }
+}
+
+function renderBalanceSheet() {
+    if (!chartData) return;
+    createChart('assetsLiabChart', 'line', chartData.labels, [
+        { label: 'Total Assets', data: chartData.total_assets, backgroundColor: 'rgba(59,130,246,0.2)', borderColor: '#3b82f6', borderWidth: 2, fill: false, tension: 0.4 },
+        { label: 'Borrowings', data: chartData.borrowings, backgroundColor: 'rgba(244,63,94,0.2)', borderColor: '#f43f5e', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('dteChart', 'line', chartData.labels, [
+        { label: 'Debt-to-Equity', data: chartData.debt_to_equity, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderCashFlow() {
+    if (!chartData) return;
+    createChart('cashflowChart', 'line', chartData.labels, [
+        { label: 'Operating', data: chartData.operating_cf, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Free Cash Flow', data: chartData.free_cf, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Net Cash Flow', data: chartData.net_cf, backgroundColor: 'rgba(245,158,11,0.2)', borderColor: '#f59e0b', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('fcfChart', 'line', chartData.labels, [
+        { label: 'Free Cash Flow', data: chartData.free_cf, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderAnalysis() {
+    const analysis = companyData.analysis || [];
+    if (analysis.length === 0) return;
+
+    // Radar chart
+    const labels = analysis.map(a => a.period_label);
+    createRadarChart('growthRadarChart', labels, [
+        { label: 'Sales Growth', data: analysis.map(a => parseFloat(a.compounded_sales_growth_pct || 0)), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.2)' },
+        { label: 'Profit Growth', data: analysis.map(a => parseFloat(a.compounded_profit_growth_pct || 0)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
+        { label: 'Stock CAGR', data: analysis.map(a => parseFloat(a.stock_price_cagr_pct || 0)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.2)' },
+        { label: 'ROE', data: analysis.map(a => parseFloat(a.roe_pct || 0)), borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.2)' },
+    ]);
+
+    // Table
+    const body = document.getElementById('analysisBody');
+    body.innerHTML = analysis.map(a => `
+        <tr>
+            <td style="font-weight:600">${a.period_label}</td>
+            <td class="number ${a.compounded_sales_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_sales_growth_pct}%</td>
+            <td class="number ${a.compounded_profit_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_profit_growth_pct}%</td>
+            <td class="number ${a.stock_price_cagr_pct >= 0 ? 'positive' : 'negative'}">${a.stock_price_cagr_pct}%</td>
+            <td class="number">${a.roe_pct}%</td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

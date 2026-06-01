@@ -1,0 +1,817 @@
+{% extends "dashboard/base.html" %}
+{% load static %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Health Rating Page Modal Styles */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(10, 14, 26, 0.85);
+    backdrop-filter: blur(12px) saturate(1.8);
+    -webkit-backdrop-filter: blur(12px) saturate(1.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+.modal-card {
+    width: 92vw;
+    height: 86vh;
+    max-width: 1200px;
+    background: rgba(17, 24, 39, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+    transform: scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-overlay.active .modal-card {
+    transform: scale(1);
+}
+.modal-close-btn {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+    z-index: 10;
+}
+.modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: rotate(90deg);
+}
+.modal-tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+.modal-company-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="section-header animate-in">
+    <div>
+        <h1>Nifty 100 Financial Intelligence</h1>
+        <p class="section-subtitle">Real-time analytics across India's top 100 publicly listed companies</p>
+    </div>
+    <a href="/api/docs/" class="btn btn-primary btn-sm">🔗 Explore API</a>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid" id="statsGrid">
+    <div class="glass-card stat-card indigo animate-in delay-1" id="stat-companies">
+        <div class="stat-header">
+            <span class="stat-label">Total Companies</span>
+            <div class="stat-icon">🏢</div>
+        </div>
+        <div class="stat-value" id="totalCompanies">—</div>
+        <div class="stat-sub">Nifty 100 Index</div>
+    </div>
+    <div class="glass-card stat-card blue animate-in delay-2" id="stat-sectors">
+        <div class="stat-header">
+            <span class="stat-label">Sectors</span>
+            <div class="stat-icon">📁</div>
+        </div>
+        <div class="stat-value" id="totalSectors">—</div>
+        <div class="stat-sub">Industry verticals</div>
+    </div>
+    <div class="glass-card stat-card emerald animate-in delay-3" id="stat-health">
+        <div class="stat-header">
+            <span class="stat-label">Avg Health Score</span>
+            <div class="stat-icon">💚</div>
+        </div>
+        <div class="stat-value" id="avgHealth">—</div>
+        <div class="stat-sub">ML-powered score</div>
+    </div>
+    <div class="glass-card stat-card amber animate-in delay-4" id="stat-excellent">
+        <div class="stat-header">
+            <span class="stat-label">Excellent Rated</span>
+            <div class="stat-icon">⭐</div>
+        </div>
+        <div class="stat-value" id="excellentCount">—</div>
+        <div class="stat-sub">Score ≥ 80</div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="chart-grid">
+    <div class="glass-card animate-in delay-2" id="healthDistCard">
+        <div class="section-header">
+            <h3 class="section-title">Health Score Distribution</h3>
+        </div>
+        <div class="chart-container">
+            <canvas id="healthDistChart"></canvas>
+        </div>
+    </div>
+    <div class="glass-card animate-in delay-3" id="sectorPerfCard">
+        <div class="section-header">
+            <h3 class="section-title">Sector Performance</h3>
+        </div>
+        <div class="chart-container">
+            <canvas id="sectorPerfChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Top Companies Table -->
+<div class="glass-card animate-in delay-3" id="topCompaniesCard">
+    <div class="section-header">
+        <h3 class="section-title">Top Performing Companies</h3>
+        <span class="section-subtitle">Ranked by ML Health Score</span>
+    </div>
+    <div class="table-container">
+        <table class="data-table" id="topCompaniesTable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Company</th>
+                    <th>Sector</th>
+                    <th class="number">Health Score</th>
+                    <th>Rating</th>
+                </tr>
+            </thead>
+            <tbody id="topCompaniesBody">
+                <tr><td colspan="5" style="text-align:center;padding:2rem;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Full Companies Table -->
+<div class="glass-card animate-in delay-4" style="margin-top:1.25rem;" id="allCompaniesCard">
+    <div class="section-header">
+        <h3 class="section-title">All Companies</h3>
+        <div class="custom-select" id="sectorFilterWrap">
+            <button class="custom-select-btn" id="sectorFilterBtn">All Sectors <span class="caret">▾</span></button>
+            <div class="custom-select-menu" id="sectorFilterMenu" style="display:none;">
+                <div class="custom-select-item active" data-value="">All Sectors</div>
+            </div>
+        </div>
+    </div>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Sector</th>
+                    <th class="number">Market Cap (₹Cr)</th>
+                    <th class="number">ROCE %</th>
+                    <th class="number">ROE %</th>
+                    <th class="number">Health Score</th>
+                    <th>Rating</th>
+                </tr>
+            </thead>
+            <tbody id="allCompaniesBody">
+                <tr><td colspan="7" style="text-align:center;padding:2rem;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Health Rating Detail Modal -->
+<div id="healthDetailModal" class="modal-overlay">
+    <div class="modal-card">
+        <!-- Close button -->
+        <button class="modal-close-btn" onclick="closeHealthModal()">&times;</button>
+        
+        <!-- View 1: Rating Companies List -->
+        <div id="ratingCompaniesView" style="display:flex; flex-direction:column; height:100%; width:100%;">
+            <div class="modal-header" style="margin-bottom:1.25rem;">
+                <h2 id="ratingModalTitle" style="font-size:1.75rem; display:flex; align-items:center; gap:12px;">Companies</h2>
+                <p id="ratingModalSubtitle" style="color:var(--text-secondary); font-size:0.875rem; margin-top:4px;">List of companies with this health rating</p>
+            </div>
+            
+            <!-- Search bar -->
+            <div style="margin-bottom:1rem; position:relative;">
+                <input type="text" id="modalRatingSearch" placeholder="Search companies by name/symbol..." style="width:100%; padding:10px 16px; background:var(--bg-input); border:1px solid var(--border-glass); border-radius:var(--radius-md); color:var(--text-primary); outline:none; transition:all var(--transition-fast);" oninput="filterModalRatingCompanies()">
+            </div>
+            
+            <!-- Scrollable companies table -->
+            <div class="table-container" style="flex:1; overflow-y:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Sector</th>
+                            <th class="number">Market Cap (₹Cr)</th>
+                            <th class="number">ROCE %</th>
+                            <th class="number">ROE %</th>
+                            <th class="number">Health Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ratingCompaniesBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- View 2: Company Financial Details -->
+        <div id="ratingCompanyDetailView" style="display:none; flex-direction:column; height:100%; width:100%; overflow-y:auto; padding-right:6px;">
+            <!-- Header row with Back to list button -->
+            <div style="margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center;">
+                <button class="btn btn-glass btn-sm" onclick="backToRatingList()">← Back to list</button>
+            </div>
+
+            <!-- Company Hero -->
+            <div class="company-hero" style="margin-bottom:1.5rem;">
+                <div class="hero-avatar" id="modalRatingCompanyAvatar" style="background:var(--gradient-primary); width:64px; height:64px; border-radius:var(--radius-md); display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:800; color:white; flex-shrink:0;">
+                    --
+                </div>
+                <div class="hero-info">
+                    <h1 style="display:flex; align-items:center; gap:12px;">
+                        <span id="modalRatingCompanyName">Company Name</span>
+                        <span class="badge badge-sector" id="modalRatingCompanySector" style="font-size:0.75rem;">Sector</span>
+                    </h1>
+                    <p style="color:var(--text-secondary); font-size:0.875rem; margin-top:4px;" id="modalRatingCompanyAbout">About company...</p>
+                    <div class="hero-meta" style="margin-top:0.5rem; display:flex; gap:1.25rem; flex-wrap:wrap;">
+                        <div class="meta-tag" id="modalRatingCompanySymbolTag"><span class="meta-icon">📌</span> --</div>
+                        <div class="meta-tag" id="modalRatingCompanyMCapTag"><span class="meta-icon">💰</span> Market Cap: --</div>
+                        <div class="meta-tag" id="modalRatingCompanyROCETag"><span class="meta-icon">📈</span> ROCE: --</div>
+                        <div class="meta-tag" id="modalRatingCompanyROETag"><span class="meta-icon">🏦</span> ROE: --</div>
+                        <div class="meta-tag" id="modalRatingCompanyBVTag"><span class="meta-icon">📖</span> Book Value: --</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs inside Modal -->
+            <div class="tab-nav" style="margin-bottom:1.25rem;">
+                <button class="tab-btn active" onclick="showRatingModalTab('overview')" id="modal-rating-tab-overview">Overview</button>
+                <button class="tab-btn" onclick="showRatingModalTab('profitloss')" id="modal-rating-tab-profitloss">Profit & Loss</button>
+                <button class="tab-btn" onclick="showRatingModalTab('balancesheet')" id="modal-rating-tab-balancesheet">Balance Sheet</button>
+                <button class="tab-btn" onclick="showRatingModalTab('cashflow')" id="modal-rating-tab-cashflow">Cash Flow</button>
+                <button class="tab-btn" onclick="showRatingModalTab('analysis')" id="modal-rating-tab-analysis">Growth Analysis</button>
+            </div>
+
+            <!-- Overview Panel -->
+            <div id="modal-rating-panel-overview" class="modal-tab-panel">
+                <div style="display:grid; grid-template-columns:300px 1fr; gap:1.25rem; margin-bottom:1.25rem;">
+                    <!-- Health Score Card -->
+                    <div class="glass-card" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.25rem;">
+                        <div class="score-ring" id="modalRatingScoreRing" style="width:120px; height:120px;">
+                            <svg viewBox="0 0 120 120" style="transform:rotate(-90deg); width:100%; height:100%;">
+                                <circle class="ring-bg" cx="60" cy="60" r="52" style="fill:none; stroke:rgba(255,255,255,0.06); stroke-width:8;"/>
+                                <circle class="ring-fill" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73" id="modalRatingScoreRingFill" style="fill:none; stroke-width:8; stroke-linecap:round; transition:stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1);"/>
+                            </svg>
+                            <div class="score-text" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                                <div class="score-value" id="modalRatingOverallScore" style="font-size:1.75rem; font-weight:800;">—</div>
+                                <div class="score-label" id="modalRatingHealthLabel" style="font-size:0.6875rem; color:var(--text-muted); margin-top:4px; text-transform:uppercase;">loading</div>
+                            </div>
+                        </div>
+                        <div class="score-breakdown" id="modalRatingScoreBreakdown" style="width:100%; margin-top:1rem;"></div>
+                    </div>
+                    <!-- Pros & Cons -->
+                    <div class="pros-cons-grid" id="modalRatingProsConsSection">
+                        <div class="glass-card" style="padding:1.25rem;">
+                            <h4 style="color:var(--accent-emerald); margin-bottom:0.75rem;">✅ Strengths</h4>
+                            <ul class="pros-cons-list" id="modalRatingProsList" style="max-height:180px; overflow-y:auto; list-style:none; display:flex; flex-direction:column; gap:6px;"></ul>
+                        </div>
+                        <div class="glass-card" style="padding:1.25rem;">
+                            <h4 style="color:var(--accent-rose); margin-bottom:0.75rem;">⚠️ Concerns</h4>
+                            <ul class="pros-cons-list" id="modalRatingConsList" style="max-height:180px; overflow-y:auto; list-style:none; display:flex; flex-direction:column; gap:6px;"></ul>
+                        </div>
+                    </div>
+                </div>
+                <!-- Charts Row -->
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Revenue & Net Profit Trend</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingRevenueProfitChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Margin Analysis (%)</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingMarginChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profit & Loss Panel -->
+            <div id="modal-rating-panel-profitloss" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Revenue vs Expenses</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingRevenueExpenseChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">EPS Trend</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingEpsChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="glass-card" style="margin-top:1.25rem; padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Detailed P&L Statement</h4>
+                    <div class="table-container">
+                        <table class="data-table" id="modalRatingPlTable">
+                            <thead><tr id="modalRatingPlTableHead"></tr></thead>
+                            <tbody id="modalRatingPlTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Balance Sheet Panel -->
+            <div id="modal-rating-panel-balancesheet" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Assets vs Liabilities</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingAssetsLiabChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Debt-to-Equity Ratio</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingDteChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cash Flow Panel -->
+            <div id="modal-rating-panel-cashflow" class="modal-tab-panel" style="display:none;">
+                <div class="chart-grid">
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Cash Flow Streams</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingCashflowChart"></canvas></div>
+                    </div>
+                    <div class="glass-card" style="padding:1.25rem;">
+                        <h4 style="margin-bottom:0.75rem;">Free Cash Flow</h4>
+                        <div class="chart-container" style="height:220px;"><canvas id="modalRatingFcfChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Growth Analysis Panel -->
+            <div id="modal-rating-panel-analysis" class="modal-tab-panel" style="display:none;">
+                <div class="glass-card" style="padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Growth Metrics Comparison</h4>
+                    <div class="chart-container" style="height:320px;"><canvas id="modalRatingGrowthRadarChart"></canvas></div>
+                </div>
+                <div class="glass-card" style="margin-top:1.25rem; padding:1.25rem;">
+                    <h4 style="margin-bottom:0.75rem;">Period-wise Analysis</h4>
+                    <div class="table-container">
+                        <table class="data-table" id="modalRatingAnalysisTable">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th class="number">Sales Growth %</th>
+                                    <th class="number">Profit Growth %</th>
+                                    <th class="number">Stock CAGR %</th>
+                                    <th class="number">ROE %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalRatingAnalysisBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/charts.js' %}?v=12"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sectorParam = urlParams.get('sector') || '';
+    
+    loadDashboard();
+    loadAllCompanies(sectorParam);
+    initSectorDropdown(sectorParam);
+});
+
+async function loadDashboard() {
+    try {
+        const res = await fetch('/api/dashboard-stats/');
+        const data = await res.json();
+
+        document.getElementById('totalCompanies').textContent = data.total_companies;
+        document.getElementById('totalSectors').textContent = data.total_sectors;
+        document.getElementById('avgHealth').textContent = data.avg_health_score;
+
+        const excellent = data.health_distribution.find(d => d.health_label__label_name === 'EXCELLENT');
+        document.getElementById('excellentCount').textContent = excellent ? excellent.count : 0;
+
+        // Top companies table
+        const tbody = document.getElementById('topCompaniesBody');
+        tbody.innerHTML = data.top_companies.map((c, i) => `
+            <tr onclick="window.location='/company/${c.symbol}/'">
+                <td style="color:var(--text-muted);font-size:0.8125rem;">${i + 1}</td>
+                <td>
+                    <div class="company-cell">
+                        <div class="company-avatar" style="background:${c.color || 'var(--accent-indigo)'}">
+                            ${c.symbol.substring(0, 2)}
+                        </div>
+                        <div class="company-info">
+                            <div class="name">${c.company_name}</div>
+                            <div class="symbol">${c.symbol}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="badge badge-sector">${c.sector}</span></td>
+                <td class="number" style="font-weight:700;color:${c.color}">${c.score.toFixed(1)}</td>
+                <td><span class="badge badge-${c.label.toLowerCase()}">${c.label}</span></td>
+            </tr>
+        `).join('');
+
+        // Charts
+        renderHealthDistChart(data.health_distribution);
+        renderSectorPerfChart(data.sector_performance);
+    } catch (e) {
+        console.error('Dashboard load error:', e);
+    }
+}
+
+async function loadAllCompanies(sector = '') {
+    try {
+        let url = '/api/companies/?format=json&page_size=100';
+        if (sector) url += `&sector__sector_code=${sector}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const companies = data.results || data;
+
+        // Populate sector filter menu
+        const menu = document.getElementById('sectorFilterMenu');
+        if (menu.children.length <= 1) {
+            const sRes = await fetch('/api/sectors/?format=json');
+            const sectors = await sRes.json();
+            const sectorList = sectors.results || sectors;
+            sectorList.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'custom-select-item';
+                item.dataset.value = s.sector_code;
+                item.textContent = s.sector_name;
+                if (s.sector_code === sector) {
+                    item.classList.add('active');
+                    document.getElementById('sectorFilterBtn').innerHTML = s.sector_name + ' <span class="caret">▾</span>';
+                }
+                menu.appendChild(item);
+            });
+            if (sector) {
+                // Remove active class from 'All Sectors' (which is the first child)
+                menu.children[0].classList.remove('active');
+            }
+        }
+
+        const tbody = document.getElementById('allCompaniesBody');
+        tbody.innerHTML = companies.map(c => `
+            <tr onclick="window.location='/company/${c.symbol}/'">
+                <td>
+                    <div class="company-cell">
+                        <div class="company-avatar" style="background:var(--gradient-primary)">
+                            ${c.symbol.substring(0, 2)}
+                        </div>
+                        <div class="company-info">
+                            <div class="name">${c.company_name}</div>
+                            <div class="symbol">${c.symbol}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="badge badge-sector">${c.sector_name || '—'}</span></td>
+                <td class="number">${c.market_cap_cr ? Number(c.market_cap_cr).toLocaleString('en-IN') : '—'}</td>
+                <td class="number ${c.roce_pct > 0 ? 'positive' : 'negative'}">${c.roce_pct || '—'}%</td>
+                <td class="number ${c.roe_pct > 0 ? 'positive' : 'negative'}">${c.roe_pct || '—'}%</td>
+                <td class="number" style="font-weight:700">${c.health_score ? c.health_score.toFixed(1) : '—'}</td>
+                <td>${c.health_label ? `<span class="badge badge-${c.health_label.toLowerCase()}">${c.health_label}</span>` : '—'}</td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error('Companies load error:', e);
+    }
+}
+
+function initSectorDropdown(initialSector = '') {
+    const wrap = document.getElementById('sectorFilterWrap');
+    const btn = document.getElementById('sectorFilterBtn');
+    const menu = document.getElementById('sectorFilterMenu');
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = menu.style.display === 'block';
+        menu.style.display = isOpen ? 'none' : 'block';
+        wrap.classList.toggle('open', !isOpen);
+    });
+
+    menu.addEventListener('click', (e) => {
+        const item = e.target.closest('.custom-select-item');
+        if (!item) return;
+        menu.querySelectorAll('.custom-select-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        btn.innerHTML = item.textContent + ' <span class="caret">▾</span>';
+        menu.style.display = 'none';
+        wrap.classList.remove('open');
+        loadAllCompanies(item.dataset.value);
+        
+        // Update URL query param without refreshing page
+        const url = new URL(window.location);
+        if (item.dataset.value) {
+            url.searchParams.set('sector', item.dataset.value);
+        } else {
+            url.searchParams.delete('sector');
+        }
+        window.history.pushState({}, '', url);
+    });
+
+    document.addEventListener('click', () => {
+        menu.style.display = 'none';
+        wrap.classList.remove('open');
+    });
+}
+
+let allModalRatingCompanies = [];
+
+async function openHealthLabelModal(ratingLabel, ratingColor) {
+    document.getElementById('ratingModalTitle').innerHTML = `${ratingLabel} Companies`;
+    document.getElementById('ratingModalTitle').style.color = ratingColor;
+    document.getElementById('modalRatingSearch').value = '';
+    
+    const tbody = document.getElementById('ratingCompaniesBody');
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;">Loading companies...</td></tr>`;
+    
+    // Show overlay
+    const modal = document.getElementById('healthDetailModal');
+    modal.classList.add('active');
+    
+    // Toggle views to show the list of companies
+    document.getElementById('ratingCompaniesView').style.display = 'flex';
+    document.getElementById('ratingCompanyDetailView').style.display = 'none';
+
+    try {
+        const res = await fetch(`/api/companies/?ml_scores__health_label__label_name=${ratingLabel}&page_size=100`);
+        const data = await res.json();
+        allModalRatingCompanies = data.results || data;
+        renderModalRatingCompanies(allModalRatingCompanies);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--accent-rose);padding:2rem;">Failed to load companies.</td></tr>`;
+    }
+}
+
+function renderModalRatingCompanies(companies) {
+    const tbody = document.getElementById('ratingCompaniesBody');
+    if (companies.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;">No companies match search.</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = companies.map(c => {
+        let scoreColor = '#64748b';
+        if (c.health_score >= 80) scoreColor = '#10b981';
+        else if (c.health_score >= 60) scoreColor = '#22c55e';
+        else if (c.health_score >= 40) scoreColor = '#f59e0b';
+        else if (c.health_score >= 20) scoreColor = '#f97316';
+        else scoreColor = '#ef4444';
+
+        return `
+        <tr class="modal-company-row" onclick="openRatingCompanyDetail('${c.symbol}')">
+            <td>
+                <div class="company-cell">
+                    <div class="company-avatar" style="background:var(--gradient-primary); width:32px; height:32px; font-size:0.7rem; display:flex; align-items:center; justify-content:center;">
+                        ${c.symbol.substring(0, 2)}
+                    </div>
+                    <div class="company-info">
+                        <div class="name" style="font-size:0.8125rem;">${c.company_name}</div>
+                        <div class="symbol" style="font-size:0.7rem;">${c.symbol}</div>
+                    </div>
+                </div>
+            </td>
+            <td><span class="badge badge-sector">${c.sector_name || '—'}</span></td>
+            <td class="number">${c.market_cap_cr ? Number(c.market_cap_cr).toLocaleString('en-IN') : '—'}</td>
+            <td class="number ${c.roce_pct > 0 ? 'positive' : 'negative'}">${c.roce_pct || '—'}%</td>
+            <td class="number ${c.roe_pct > 0 ? 'positive' : 'negative'}">${c.roe_pct || '—'}%</td>
+            <td class="number" style="font-weight:700; color:${scoreColor}">${c.health_score ? c.health_score.toFixed(1) : '—'}</td>
+        </tr>`;
+    }).join('');
+}
+
+function filterModalRatingCompanies() {
+    const val = document.getElementById('modalRatingSearch').value.toLowerCase().trim();
+    const filtered = allModalRatingCompanies.filter(c => 
+        c.company_name.toLowerCase().includes(val) || 
+        c.symbol.toLowerCase().includes(val)
+    );
+    renderModalRatingCompanies(filtered);
+}
+
+function closeHealthModal() {
+    document.getElementById('healthDetailModal').classList.remove('active');
+}
+
+async function openRatingCompanyDetail(symbol) {
+    // Hide sector list and show detail view
+    document.getElementById('ratingCompaniesView').style.display = 'none';
+    document.getElementById('ratingCompanyDetailView').style.display = 'flex';
+    
+    // Set loading placeholders
+    document.getElementById('modalRatingCompanyName').innerText = "Loading...";
+    document.getElementById('modalRatingCompanySector').innerText = "";
+    document.getElementById('modalRatingCompanyAbout').innerText = "";
+    
+    try {
+        const [chartRes, detailRes] = await Promise.all([
+            fetch(`/api/companies/${symbol}/chart-data/`),
+            fetch(`/api/companies/${symbol}/?format=json`)
+        ]);
+        const chartData = await chartRes.json();
+        const companyData = await detailRes.json();
+
+        // Render company detail hero fields
+        document.getElementById('modalRatingCompanyName').innerText = companyData.company_name;
+        document.getElementById('modalRatingCompanySector').innerText = companyData.sector_name;
+        document.getElementById('modalRatingCompanyAbout').innerText = companyData.about_company || "No description available.";
+        document.getElementById('modalRatingCompanyAvatar').innerText = symbol.substring(0, 2);
+        
+        document.getElementById('modalRatingCompanySymbolTag').innerHTML = `<span class="meta-icon">📌</span> ${symbol}`;
+        document.getElementById('modalRatingCompanyMCapTag').innerHTML = `<span class="meta-icon">💰</span> Market Cap: ₹${Math.round(companyData.market_cap_cr || 0).toLocaleString('en-IN')} Cr`;
+        document.getElementById('modalRatingCompanyROCETag').innerHTML = `<span class="meta-icon">📈</span> ROCE: ${companyData.roce_pct || '—'}%`;
+        document.getElementById('modalRatingCompanyROETag').innerHTML = `<span class="meta-icon">🏦</span> ROE: ${companyData.roe_pct || '—'}%`;
+        document.getElementById('modalRatingCompanyBVTag').innerHTML = `<span class="meta-icon">📖</span> Book Value: ₹${companyData.book_value || '—'}`;
+
+        // RENDER DETAILS ON PORTALS
+        renderModalRatingOverview(companyData, chartData);
+        renderModalRatingProfitLoss(companyData, chartData);
+        renderModalRatingBalanceSheet(companyData, chartData);
+        renderModalRatingCashFlow(companyData, chartData);
+        renderModalRatingAnalysis(companyData);
+        
+        // Reset tab view to Overview
+        showRatingModalTab('overview');
+
+    } catch (e) {
+        console.error('Error loading company details inside modal:', e);
+    }
+}
+
+function backToRatingList() {
+    document.getElementById('ratingCompanyDetailView').style.display = 'none';
+    document.getElementById('ratingCompaniesView').style.display = 'flex';
+}
+
+function showRatingModalTab(tab) {
+    document.querySelectorAll('#ratingCompanyDetailView .modal-tab-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('#ratingCompanyDetailView .tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`modal-rating-panel-${tab}`).style.display = 'flex';
+    document.getElementById(`modal-rating-tab-${tab}`).classList.add('active');
+}
+
+function renderModalRatingOverview(companyData, chartData) {
+    const score = companyData.ml_scores?.[0];
+    if (score) {
+        const val = parseFloat(score.overall_score);
+        document.getElementById('modalRatingOverallScore').textContent = val.toFixed(1);
+        document.getElementById('modalRatingHealthLabel').textContent = score.health_label_name || '';
+
+        const circ = 2 * Math.PI * 52;
+        const offset = circ - (val / 100) * circ;
+        const fill = document.getElementById('modalRatingScoreRingFill');
+        fill.style.stroke = score.health_color || '#6366f1';
+        setTimeout(() => { fill.style.strokeDashoffset = offset; }, 100);
+
+        // Score breakdown
+        const dims = [
+            { label: 'Profitability', val: score.profitability_score, color: '#6366f1' },
+            { label: 'Growth', val: score.growth_score, color: '#3b82f6' },
+            { label: 'Leverage', val: score.leverage_score, color: '#06b6d4' },
+            { label: 'Cash Flow', val: score.cashflow_score, color: '#10b981' },
+            { label: 'Dividend', val: score.dividend_score, color: '#f59e0b' },
+            { label: 'Trend', val: score.trend_score, color: '#f43f5e' },
+        ];
+        document.getElementById('modalRatingScoreBreakdown').innerHTML = dims.map(d => `
+            <div class="score-bar-item">
+                <span class="bar-label">${d.label}</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width:${d.val}%;background:${d.color};"></div>
+                </div>
+                <span class="bar-value" style="color:${d.color}">${parseFloat(d.val).toFixed(0)}</span>
+            </div>
+        `).join('');
+    }
+
+    // Pros & Cons
+    const pros = (companyData.pros_cons || []).filter(p => p.is_pro);
+    const cons = (companyData.pros_cons || []).filter(p => !p.is_pro);
+    document.getElementById('modalRatingProsList').innerHTML = pros.length > 0 ? pros.map(p =>
+        `<li><span class="icon-pro">✓</span>${p.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.8125rem;">No strengths recorded.</span></li>';
+    
+    document.getElementById('modalRatingConsList').innerHTML = cons.length > 0 ? cons.map(c =>
+        `<li><span class="icon-con">✗</span>${c.text}</li>`
+    ).join('') : '<li><span style="color:var(--text-muted);font-size:0.8125rem;">No concerns recorded.</span></li>';
+
+    // Charts
+    if (chartData) {
+        createChart('modalRatingRevenueProfitChart', 'line', chartData.labels, [
+            { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+            { label: 'Net Profit', data: chartData.net_profit, backgroundColor: 'rgba(16,185,129,0.3)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        ]);
+        createChart('modalRatingMarginChart', 'line', chartData.labels, [
+            { label: 'OPM %', data: chartData.opm_pct, borderColor: '#8b5cf6', tension: 0.4, fill: false },
+            { label: 'NPM %', data: chartData.npm_pct, borderColor: '#06b6d4', tension: 0.4, fill: false },
+        ]);
+    }
+}
+
+function renderModalRatingProfitLoss(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalRatingRevenueExpenseChart', 'line', chartData.labels, [
+        { label: 'Revenue', data: chartData.revenue, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Operating Profit', data: chartData.operating_profit, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalRatingEpsChart', 'line', chartData.labels, [
+        { label: 'EPS (₹)', data: chartData.eps, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.4, fill: true },
+    ]);
+
+    // Table
+    const pls = companyData.profit_loss || [];
+    if (pls.length > 0) {
+        const head = document.getElementById('modalRatingPlTableHead');
+        head.innerHTML = '<th>Metric</th>' + pls.map(p => `<th class="number">${p.year_label}</th>`).join('');
+        const metrics = [
+            ['Sales', 'sales'], ['Expenses', 'expenses'], ['Operating Profit', 'operating_profit'],
+            ['OPM %', 'opm_pct'], ['Net Profit', 'net_profit'], ['EPS', 'eps']
+        ];
+        const body = document.getElementById('modalRatingPlTableBody');
+        body.innerHTML = metrics.map(([label, key]) => {
+            return `<tr><td style="font-weight:600">${label}</td>${pls.map(p => {
+                const v = p[key];
+                return `<td class="number">${v != null ? Number(v).toLocaleString('en-IN', {maximumFractionDigits: 2}) : '—'}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+    }
+}
+
+function renderModalRatingBalanceSheet(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalRatingAssetsLiabChart', 'line', chartData.labels, [
+        { label: 'Total Assets', data: chartData.total_assets, backgroundColor: 'rgba(59,130,246,0.2)', borderColor: '#3b82f6', borderWidth: 2, fill: false, tension: 0.4 },
+        { label: 'Borrowings', data: chartData.borrowings, backgroundColor: 'rgba(244,63,94,0.2)', borderColor: '#f43f5e', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalRatingDteChart', 'line', chartData.labels, [
+        { label: 'Debt-to-Equity', data: chartData.debt_to_equity, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderModalRatingCashFlow(companyData, chartData) {
+    if (!chartData) return;
+    createChart('modalRatingCashflowChart', 'line', chartData.labels, [
+        { label: 'Operating', data: chartData.operating_cf, backgroundColor: 'rgba(16,185,129,0.2)', borderColor: '#10b981', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Free Cash Flow', data: chartData.free_cf, backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1', borderWidth: 3, fill: false, tension: 0.4 },
+        { label: 'Net Cash Flow', data: chartData.net_cf, backgroundColor: 'rgba(245,158,11,0.2)', borderColor: '#f59e0b', borderWidth: 2, fill: false, tension: 0.4 },
+    ]);
+    createChart('modalRatingFcfChart', 'line', chartData.labels, [
+        { label: 'Free Cash Flow', data: chartData.free_cf, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', tension: 0.4, fill: true },
+    ]);
+}
+
+function renderModalRatingAnalysis(companyData) {
+    const analysis = companyData.analysis || [];
+    if (analysis.length === 0) return;
+
+    // Radar chart
+    const labels = analysis.map(a => a.period_label);
+    createRadarChart('modalRatingGrowthRadarChart', labels, [
+        { label: 'Sales Growth', data: analysis.map(a => parseFloat(a.compounded_sales_growth_pct || 0)), borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.2)' },
+        { label: 'Profit Growth', data: analysis.map(a => parseFloat(a.compounded_profit_growth_pct || 0)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
+        { label: 'Stock CAGR', data: analysis.map(a => parseFloat(a.stock_price_cagr_pct || 0)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.2)' },
+        { label: 'ROE', data: analysis.map(a => parseFloat(a.roe_pct || 0)), borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.2)' },
+    ]);
+
+    // Table
+    const body = document.getElementById('modalRatingAnalysisBody');
+    body.innerHTML = analysis.map(a => `
+        <tr>
+            <td style="font-weight:600">${a.period_label}</td>
+            <td class="number ${a.compounded_sales_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_sales_growth_pct}%</td>
+            <td class="number ${a.compounded_profit_growth_pct >= 0 ? 'positive' : 'negative'}">${a.compounded_profit_growth_pct}%</td>
+            <td class="number ${a.stock_price_cagr_pct >= 0 ? 'positive' : 'negative'}">${a.stock_price_cagr_pct}%</td>
+            <td class="number">${a.roe_pct}%</td>
+        </tr>
+    `).join('');
+}
+</script>
+{% endblock %}

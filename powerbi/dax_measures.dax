@@ -1,0 +1,447 @@
+// ============================================================
+// BlueStock Nifty 100 — DAX Measures Library
+// ============================================================
+// Create a disconnected "Measures" table in Power BI:
+//   Measures = ROW("x", 0)
+// Then hide this table and attach all measures to it.
+//
+// SCHEMA ADAPTATION NOTES:
+//   dim_year has no [year_date] column — uses [sort_order] for YoY
+//   fact_analysis has separate columns, not [metric]/[value_pct]
+//   dim_company uses [roe_pct] not [roe_percentage]
+//   fact_ml_scores uses [health_label_id] FK → dim_health_label
+// ============================================================
+
+
+// ────────────────────────────────────────────────────────────
+// 5.1  REVENUE & GROWTH MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Total Revenue] =
+    SUM(fact_profit_loss[sales])
+
+[Total Net Profit] =
+    SUM(fact_profit_loss[net_profit])
+
+[Avg OPM %] =
+    AVERAGE(fact_profit_loss[opm_pct])
+
+[Revenue YoY Growth %] =
+    VAR CurrentYear = SUM(fact_profit_loss[sales])
+    VAR _currentOrder = SELECTEDVALUE(dim_year[sort_order])
+    VAR PreviousYear =
+        CALCULATE(
+            SUM(fact_profit_loss[sales]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _currentOrder - 1)
+        )
+    RETURN
+    IF(
+        NOT ISBLANK(PreviousYear) && PreviousYear <> 0,
+        DIVIDE(CurrentYear - PreviousYear, PreviousYear) * 100,
+        BLANK()
+    )
+
+[Profit YoY Growth %] =
+    VAR CurrentYear = SUM(fact_profit_loss[net_profit])
+    VAR _currentOrder = SELECTEDVALUE(dim_year[sort_order])
+    VAR PreviousYear =
+        CALCULATE(
+            SUM(fact_profit_loss[net_profit]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _currentOrder - 1)
+        )
+    RETURN
+    IF(
+        NOT ISBLANK(PreviousYear) && PreviousYear <> 0,
+        DIVIDE(CurrentYear - PreviousYear, PreviousYear) * 100,
+        BLANK()
+    )
+
+[3Y Sales CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_sales_growth_pct]),
+        fact_analysis[period_label] = "3Y"
+    )
+
+[5Y Sales CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_sales_growth_pct]),
+        fact_analysis[period_label] = "5Y"
+    )
+
+[10Y Sales CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_sales_growth_pct]),
+        fact_analysis[period_label] = "10Y"
+    )
+
+[TTM Sales Growth %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_sales_growth_pct]),
+        fact_analysis[period_label] = "TTM"
+    )
+
+[3Y Profit CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_profit_growth_pct]),
+        fact_analysis[period_label] = "3Y"
+    )
+
+[5Y Profit CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_profit_growth_pct]),
+        fact_analysis[period_label] = "5Y"
+    )
+
+[10Y Profit CAGR %] =
+    CALCULATE(
+        AVERAGE(fact_analysis[compounded_profit_growth_pct]),
+        fact_analysis[period_label] = "10Y"
+    )
+
+[Stock CAGR 3Y] =
+    CALCULATE(
+        AVERAGE(fact_analysis[stock_price_cagr_pct]),
+        fact_analysis[period_label] = "3Y"
+    )
+
+[Stock CAGR 5Y] =
+    CALCULATE(
+        AVERAGE(fact_analysis[stock_price_cagr_pct]),
+        fact_analysis[period_label] = "5Y"
+    )
+
+[Stock CAGR 10Y] =
+    CALCULATE(
+        AVERAGE(fact_analysis[stock_price_cagr_pct]),
+        fact_analysis[period_label] = "10Y"
+    )
+
+
+// ────────────────────────────────────────────────────────────
+// 5.2  PROFITABILITY MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Net Profit Margin %] =
+    DIVIDE(SUM(fact_profit_loss[net_profit]), SUM(fact_profit_loss[sales])) * 100
+
+[Avg ROE %] =
+    AVERAGE(dim_company[roe_pct])
+
+[ROE Last Year] =
+    CALCULATE(
+        AVERAGE(fact_analysis[roe_pct]),
+        fact_analysis[period_label] = "3Y"
+    )
+
+[ROE 5Y] =
+    CALCULATE(
+        AVERAGE(fact_analysis[roe_pct]),
+        fact_analysis[period_label] = "5Y"
+    )
+
+[ROE 10Y] =
+    CALCULATE(
+        AVERAGE(fact_analysis[roe_pct]),
+        fact_analysis[period_label] = "10Y"
+    )
+
+[ROCE] = AVERAGE(dim_company[roce_pct])
+
+[Interest Coverage Ratio] =
+    DIVIDE(
+        SUM(fact_profit_loss[operating_profit]),
+        SUM(fact_profit_loss[interest])
+    )
+
+[Expense Ratio %] =
+    DIVIDE(SUM(fact_profit_loss[expenses]), SUM(fact_profit_loss[sales])) * 100
+
+[EPS] = AVERAGE(fact_profit_loss[eps])
+
+[Sector Avg OPM %] =
+    VAR _sectorId = CALCULATE(SELECTEDVALUE(dim_company[sector_id]))
+    RETURN
+    CALCULATE(
+        AVERAGE(fact_profit_loss[opm_pct]),
+        FILTER(ALL(dim_company), dim_company[sector_id] = _sectorId)
+    )
+
+[Sector Avg ROE] =
+    VAR _sectorId = CALCULATE(SELECTEDVALUE(dim_company[sector_id]))
+    RETURN
+    CALCULATE(
+        AVERAGE(dim_company[roe_pct]),
+        FILTER(ALL(dim_company), dim_company[sector_id] = _sectorId)
+    )
+
+[ROA] =
+    DIVIDE(
+        SUM(fact_profit_loss[net_profit]),
+        SUM(fact_balance_sheet[total_assets])
+    ) * 100
+
+
+// ────────────────────────────────────────────────────────────
+// 5.3  BALANCE SHEET & LEVERAGE MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Avg Debt to Equity] =
+    AVERAGE(fact_balance_sheet[debt_to_equity])
+
+[Latest Debt to Equity] =
+    VAR _maxOrder =
+        CALCULATE(MAX(dim_year[sort_order]), ALL(dim_year), dim_year[is_ttm] = FALSE)
+    RETURN
+    CALCULATE(
+        AVERAGE(fact_balance_sheet[debt_to_equity]),
+        FILTER(ALL(dim_year), dim_year[sort_order] = _maxOrder)
+    )
+
+[Total Borrowings] =
+    SUM(fact_balance_sheet[borrowings])
+
+[Total Assets] =
+    SUM(fact_balance_sheet[total_assets])
+
+[Reserves] = SUM(fact_balance_sheet[reserves])
+
+[Equity Capital] = SUM(fact_balance_sheet[equity_capital])
+
+[Equity Ratio] =
+    DIVIDE(
+        SUM(fact_balance_sheet[equity_capital]) + SUM(fact_balance_sheet[reserves]),
+        SUM(fact_balance_sheet[total_assets])
+    )
+
+[Debt Free Flag] =
+    IF([Latest Debt to Equity] < 0.1, "Debt Free", "Has Debt")
+
+[D/E Change YoY] =
+    VAR _maxOrder =
+        CALCULATE(MAX(dim_year[sort_order]), ALL(dim_year), dim_year[is_ttm] = FALSE)
+    VAR _currentDE =
+        CALCULATE(
+            AVERAGE(fact_balance_sheet[debt_to_equity]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _maxOrder)
+        )
+    VAR _prevDE =
+        CALCULATE(
+            AVERAGE(fact_balance_sheet[debt_to_equity]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _maxOrder - 1)
+        )
+    RETURN _currentDE - _prevDE
+
+[Sector Avg D/E] =
+    VAR _sectorId = CALCULATE(SELECTEDVALUE(dim_company[sector_id]))
+    RETURN
+    CALCULATE(
+        AVERAGE(fact_balance_sheet[debt_to_equity]),
+        FILTER(ALL(dim_company), dim_company[sector_id] = _sectorId)
+    )
+
+[Fixed Assets %] =
+    DIVIDE(SUM(fact_balance_sheet[fixed_assets]), SUM(fact_balance_sheet[total_assets])) * 100
+
+[Investments %] =
+    DIVIDE(SUM(fact_balance_sheet[investments]), SUM(fact_balance_sheet[total_assets])) * 100
+
+[Other Assets %] =
+    DIVIDE(SUM(fact_balance_sheet[other_assets]), SUM(fact_balance_sheet[total_assets])) * 100
+
+
+// ────────────────────────────────────────────────────────────
+// 5.4  CASH FLOW MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Operating Cash Flow] = SUM(fact_cash_flow[operating_activity])
+
+[Investing Cash Flow] = SUM(fact_cash_flow[investing_activity])
+
+[Financing Cash Flow] = SUM(fact_cash_flow[financing_activity])
+
+[Net Cash Flow] = SUM(fact_cash_flow[net_cash_flow])
+
+[Free Cash Flow] =
+    SUM(fact_cash_flow[operating_activity]) + SUM(fact_cash_flow[investing_activity])
+
+[Cash Conversion Ratio] =
+    DIVIDE(
+        SUM(fact_cash_flow[operating_activity]),
+        SUM(fact_profit_loss[net_profit])
+    )
+
+[Positive FCF Years Count] =
+    COUNTROWS(
+        FILTER(
+            fact_cash_flow,
+            fact_cash_flow[free_cash_flow] > 0
+        )
+    )
+
+
+// ────────────────────────────────────────────────────────────
+// 5.5  DIVIDEND MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Avg Dividend Payout %] =
+    AVERAGE(fact_profit_loss[dividend_payout_pct])
+
+[Avg Dividend Payout 5Y] =
+    VAR _maxOrder =
+        CALCULATE(MAX(dim_year[sort_order]), ALL(dim_year), dim_year[is_ttm] = FALSE)
+    RETURN
+    CALCULATE(
+        AVERAGE(fact_profit_loss[dividend_payout_pct]),
+        FILTER(ALL(dim_year),
+            dim_year[sort_order] >= _maxOrder - 4
+            && dim_year[sort_order] <= _maxOrder
+            && dim_year[is_ttm] = FALSE)
+    )
+
+[Consistent Dividend Payer] =
+    VAR YearsWithDividend = COUNTROWS(
+        FILTER(fact_profit_loss, fact_profit_loss[dividend_payout_pct] > 0)
+    )
+    VAR TotalYears = COUNTROWS(fact_profit_loss)
+    RETURN
+    IF(DIVIDE(YearsWithDividend, TotalYears) >= 0.8, "Yes", "No")
+
+[Dividend Consistency Score] =
+    VAR _maxOrder =
+        CALCULATE(MAX(dim_year[sort_order]), ALL(dim_year), dim_year[is_ttm] = FALSE)
+    VAR _dividendYears =
+        CALCULATE(
+            COUNTROWS(FILTER(fact_profit_loss, fact_profit_loss[dividend_payout_pct] > 0)),
+            FILTER(ALL(dim_year),
+                dim_year[sort_order] >= _maxOrder - 9
+                && dim_year[sort_order] <= _maxOrder
+                && dim_year[is_ttm] = FALSE)
+        )
+    RETURN DIVIDE(_dividendYears, 10) * 100
+
+
+// ────────────────────────────────────────────────────────────
+// 5.6  ML SCORE MEASURES
+// ────────────────────────────────────────────────────────────
+
+[Latest Health Score] =
+    CALCULATE(
+        MAX(fact_ml_scores[overall_score]),
+        FILTER(
+            fact_ml_scores,
+            fact_ml_scores[computed_at] =
+                CALCULATE(MAX(fact_ml_scores[computed_at]))
+        )
+    )
+
+[Health Label] =
+    SWITCH(
+        TRUE(),
+        [Latest Health Score] >= 85, "EXCELLENT",
+        [Latest Health Score] >= 70, "GOOD",
+        [Latest Health Score] >= 50, "AVERAGE",
+        [Latest Health Score] >= 35, "WEAK",
+        "POOR"
+    )
+
+[Health Score Color] =
+    SWITCH(
+        [Health Label],
+        "EXCELLENT", "#2ECC71",
+        "GOOD", "#82E0AA",
+        "AVERAGE", "#F7DC6F",
+        "WEAK", "#F0A500",
+        "POOR", "#E74C3C",
+        "#CCCCCC"
+    )
+
+[Companies with Excellent Health] =
+    COUNTROWS(
+        FILTER(fact_ml_scores, fact_ml_scores[overall_score] >= 85)
+    )
+
+[Companies Good Health] =
+    COUNTROWS(
+        FILTER(fact_ml_scores,
+            fact_ml_scores[overall_score] >= 70
+            && fact_ml_scores[overall_score] < 85)
+    )
+
+[Companies Needing Attention] =
+    COUNTROWS(
+        FILTER(fact_ml_scores, fact_ml_scores[overall_score] < 35)
+    )
+
+[Profitability Score] = SELECTEDVALUE(fact_ml_scores[profitability_score])
+
+[Growth Score] = SELECTEDVALUE(fact_ml_scores[growth_score])
+
+[Leverage Score] = SELECTEDVALUE(fact_ml_scores[leverage_score])
+
+[Cash Flow Score] = SELECTEDVALUE(fact_ml_scores[cashflow_score])
+
+[Dividend Score] = SELECTEDVALUE(fact_ml_scores[dividend_score])
+
+[Trend Score] = SELECTEDVALUE(fact_ml_scores[trend_score])
+
+[Health Score Rank] =
+    RANKX(
+        ALL(dim_company),
+        CALCULATE(MAX(fact_ml_scores[overall_score])),
+        ,
+        DESC,
+        DENSE
+    )
+
+
+// ────────────────────────────────────────────────────────────
+// HELPER MEASURES (Used across dashboards)
+// ────────────────────────────────────────────────────────────
+
+[Total Companies] = COUNTROWS(dim_company)
+
+[Sector Company Count] = CALCULATE(COUNTROWS(dim_company))
+
+[Selected Company Name] = SELECTEDVALUE(dim_company[company_name], "All Companies")
+
+[Selected Company Symbol] = SELECTEDVALUE(dim_company[symbol])
+
+[Latest Year Sort Order] =
+    CALCULATE(MAX(dim_year[sort_order]), ALL(dim_year), dim_year[is_ttm] = FALSE)
+
+[Revenue Latest Year] =
+    CALCULATE(
+        SUM(fact_profit_loss[sales]),
+        FILTER(dim_year, dim_year[sort_order] = [Latest Year Sort Order])
+    )
+
+[OPM Improvement 3Y] =
+    VAR _maxOrder = [Latest Year Sort Order]
+    VAR _latestOPM =
+        CALCULATE(AVERAGE(fact_profit_loss[opm_pct]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _maxOrder))
+    VAR _olderOPM =
+        CALCULATE(AVERAGE(fact_profit_loss[opm_pct]),
+            FILTER(ALL(dim_year), dim_year[sort_order] = _maxOrder - 3))
+    RETURN _latestOPM - _olderOPM
+
+[Best Company In Sector] =
+    VAR _tbl = ADDCOLUMNS(
+        dim_company,
+        "Score", CALCULATE(MAX(fact_ml_scores[overall_score]))
+    )
+    RETURN MAXX(TOPN(1, _tbl, [Score], DESC), dim_company[company_name])
+
+[Worst Company In Sector] =
+    VAR _tbl = ADDCOLUMNS(
+        dim_company,
+        "Score", CALCULATE(MAX(fact_ml_scores[overall_score]))
+    )
+    RETURN MAXX(TOPN(1, _tbl, [Score], ASC), dim_company[company_name])
+
+
+// ────────────────────────────────────────────────────────────
+// HELPER TABLES (Create via Modeling → New Table)
+// ────────────────────────────────────────────────────────────
+// ScoreBins = GENERATESERIES(0, 90, 10)
+// PeriodLabels = DATATABLE("Period", STRING, {{"10Y"}, {"5Y"}, {"3Y"}, {"TTM"}})

@@ -1,0 +1,68 @@
+# ============================================================
+# BlueStock Nifty 100 — .gitignore
+# ============================================================
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Django
+*.sqlite3
+staticfiles/
+media/
+local_settings.py
+
+# Environment variables — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Data files (raw / intermediate — too large for git)
+data/raw/
+data/clean/
+data/*.csv
+data/*.xlsx
+
+# Excel temporary lock files
+~$*.xlsx
+~$*.xls
+~$*.docx
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+
+# Coverage
+htmlcov/
+.coverage
+.pytest_cache/
